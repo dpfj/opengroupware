@@ -1,4 +1,4 @@
-# OpenGroupware — Project Specification v2.0
+# OpenGroupware — Project Specification v3.0
 
 > **이 문서는 프로젝트의 단일 진실 원천(Single Source of Truth)이다.**
 > Claude Code는 이 spec을 읽고 자동으로 작업을 수행한다.
@@ -11,62 +11,61 @@
 |------|-----|
 | 저장소 | https://github.com/dpfj/opengroupware |
 | 구조 | 모노레포 (`groupware-sdk` + `groupware-web`) |
-| 언어 | Go (백엔드) + TypeScript (프론트엔드) |
+| 백엔드 | Go 1.24+ (Gin 프레임워크) |
+| 프론트엔드 | TypeScript + Next.js 15 + React 19 |
 | 라이선스 | MIT |
 | 목표 | 퍼블릭 오픈소스 그룹웨어 풀스택 애플리케이션 |
 
 ---
 
-## 1. 아키텍처 원칙
+## 1. 아키텍처 개요
 
-### 1-1. 디자인 패턴 (모든 모듈 필수 적용)
-
-| 패턴 | 용도 | 적용 위치 |
-|------|------|-----------|
-| **Repository** | 데이터 접근 추상화 | 모든 데이터 레이어 |
-| **Factory** | 객체 생성 캡슐화 | 모듈/서비스 인스턴스 생성 |
-| **Observer/EventEmitter** | 이벤트 기반 통신 | 모듈 간 느슨한 결합 |
-| **Strategy** | 알고리즘 교체 | 인증, 스토리지, 직렬화 |
-| **Adapter** | 외부 인터페이스 변환 | API, 스토리지 백엔드 |
-| **Facade** | 서브시스템 단순화 | SDK 메인 진입점 |
-| **Command** | 작업 캡슐화 | Undo/Redo, 태스크 큐 |
-| **Middleware/Pipeline** | 요청/응답 체인 | API 호출, 데이터 변환 |
-| **State** | 상태 전이 관리 | Task 상태, 연결 상태 |
-| **Singleton** | 전역 인스턴스 제어 | EventBus, Config, Logger |
-| **Builder** | 복잡한 객체 조립 | Query Builder, Event Builder |
-| **Iterator** | 순회 추상화 | 페이지네이션, 컬렉션 순회 |
-| **Proxy** | 접근 제어/캐싱 | Cache Proxy, Lazy Loading |
-| **Decorator** | 기능 동적 추가 | 로깅, 인증 래퍼 |
-
-### 1-2. 마이그레이션 친화적 설계 규칙
-
-1. 인터페이스 먼저 → JSDoc `@interface`로 계약 정의 후 구현
-2. 의존성 주입(DI) → `new` 직접 호출 금지, 팩토리/컨테이너 사용
-3. 순수 함수 선호 → 사이드 이펙트 최소화
-4. 데이터 구조 명시 → JSDoc `@typedef`로 모든 엔티티 스키마 정의
-5. 표준 에러 코드 → 상수로 관리 (언어 무관 매핑)
-6. 계층 분리 → Presentation → Application → Domain → Infrastructure
-7. 프레임워크 매직 금지 → 데코레이터, 매직 메서드 사용하지 않는다
-8. 직렬화 가능 → 모든 상태 객체는 JSON 직렬화/역직렬화 가능
-9. 3단계 이상 상속 금지 → Composition over Inheritance
-10. 순환 의존 금지 → 단방향 의존만 허용
+### 1-1. 전체 구조
 
 ```
 ┌─────────────────────────────────────────────┐
-│            Facade (SDK Entry)               │
+│         Next.js 15 Frontend (Web)           │
+│  React 19 + TanStack Query + Zustand + SSE │
 ├─────────────────────────────────────────────┤
-│         Application / UseCase               │
-├──────┬────────┬──────┬─────────┬────────────┤
-│ Cal  │Contact │ Task │ Message │  Storage   │
-├──────┴────────┴──────┴─────────┴────────────┤
-│         Domain Interfaces                   │
+│              HTTP/REST API                  │
 ├─────────────────────────────────────────────┤
-│    Infrastructure (Adapters)                │
-│  ┌──────┐ ┌──────────┐ ┌────────┐ ┌──────┐ │
-│  │ REST │ │IndexedDB │ │ Memory │ │WSocket│ │
-│  └──────┘ └──────────┘ └────────┘ └──────┘ │
+│         Go Backend (groupware-sdk)          │
+│      Gin + JWT + In-Memory Storage          │
+├──────┬──────┬─────────┬──────────┬──────────┤
+│ Auth │Approv│ File    │ Message  │ Calendar │
+├──────┴──────┴─────────┴──────────┴──────────┤
+│         Domain Models & Services            │
+├─────────────────────────────────────────────┤
+│    Infrastructure (Future: PostgreSQL)      │
 └─────────────────────────────────────────────┘
 ```
+
+### 1-2. 디자인 패턴 (현재 적용됨)
+
+| 패턴 | 용도 | 적용 위치 |
+|------|------|-----------|
+| **Handler** | HTTP 요청 처리 | `internal/*/handler.go` |
+| **Service** | 비즈니스 로직 | `internal/*/service.go` |
+| **Dependency Injection** | 의존성 관리 | 모든 `NewXxx()` 생성자 |
+| **Middleware** | 요청/응답 파이프라인 | `internal/middleware/` |
+| **Singleton** | 전역 인스턴스 관리 | `pkg/logger/` |
+| **Repository** | 데이터 접근 추상화 | Service 내부 in-memory store |
+| **Observer** | 이벤트 기반 통신 | Approval 콜백 (OnApproved, OnRejected) |
+| **Event Sourcing** (부분) | 이벤트 기록 | Approval 히스토리 |
+| **Hook** (React) | 로직 재사용 | `src/hooks/useSSE.ts` |
+| **Provider** (React) | Context 제공 | `src/components/layout/Providers.tsx` |
+| **State Management** | 전역 상태 | Zustand (`src/stores/`) |
+| **Adapter** | API 래핑 | `src/lib/api.ts` |
+
+### 1-3. 개발 원칙
+
+1. **Handler → Service → Store** 3계층 분리
+2. **의존성 주입** — 생성자 기반 DI
+3. **에러 처리** — 구조화된 에러 응답 (`pkg/response`)
+4. **로깅** — 구조화 로깅 (zap)
+5. **테스트** — 모든 Service, Handler에 단위 테스트 작성
+6. **문서화** — 모든 Public API에 주석 작성
+7. **Conventional Commits** — feat, fix, docs, test, refactor, chore
 
 ---
 
@@ -74,16 +73,15 @@
 
 > Claude Code 최초 실행 시 반드시 이 Phase부터 수행.
 
-- [ ] 전체 디렉토리 트리 출력 (node_modules 제외)
-- [ ] 모든 package.json 분석 (deps, scripts, entry points)
-- [ ] 모든 .js/.ts 파일의 export 목록 수집
-- [ ] import 의존관계 그래프 생성
-- [ ] 현재 적용된 디자인 패턴 식별
-- [ ] TODO/FIXME/HACK 주석 수집
-- [ ] 테스트 파일 존재 여부 및 프레임워크 식별
-- [ ] STATUS.md 생성 (위 결과 종합)
-- [ ] spec.md Phase 5의 모듈 목록을 실제 코드에 맞게 갱신
-- [ ] .DS_Store 파일이 있으면 즉시 삭제 및 .gitignore에 추가
+- [x] 전체 디렉토리 트리 출력 (node_modules 제외)
+- [x] 모든 package.json, go.mod 분석
+- [x] 모든 .go/.ts/.tsx 파일의 export 목록 수집
+- [x] import 의존관계 그래프 생성
+- [x] 현재 적용된 디자인 패턴 식별
+- [x] TODO/FIXME/HACK 주석 수집 (결과: 0개)
+- [x] 테스트 파일 존재 여부 확인 (결과: 0개)
+- [x] STATUS.md 생성
+- [x] .DS_Store 파일 삭제 및 .gitignore 추가
 
 ---
 
@@ -91,337 +89,284 @@
 
 ### 3-1. 리포지토리 정비
 
-- [ ] `.gitignore` 생성 — node_modules, dist, .DS_Store, .env, coverage, *.log
-- [ ] `.DS_Store` git history에서 완전 제거 (`git rm --cached`)
+- [ ] `.gitignore` 갱신 — Go, Node.js, Next.js, .DS_Store, IDE 관련
 - [ ] `LICENSE` 파일 생성 (MIT)
 - [ ] `CODE_OF_CONDUCT.md` 생성 (Contributor Covenant v2.1)
-- [ ] `CONTRIBUTING.md` 생성 — PR 규칙, 브랜치 전략, 코드 스타일, 커밋 컨벤션
+- [ ] `CONTRIBUTING.md` 생성 — PR 규칙, 브랜치 전략, 커밋 컨벤션
 - [ ] `CHANGELOG.md` 생성 (Keep a Changelog 형식)
-- [ ] `README.md` 생성 — 프로젝트 소개, 아키텍처 다이어그램, Quick Start, 설치, API 개요, 기여 방법, 라이선스
+- [ ] `README.md` 갱신 — 프로젝트 소개, 아키텍처, Quick Start, API 개요
 - [ ] `.github/ISSUE_TEMPLATE/bug_report.md` 생성
 - [ ] `.github/ISSUE_TEMPLATE/feature_request.md` 생성
 - [ ] `.github/PULL_REQUEST_TEMPLATE.md` 생성
-- [ ] `.editorconfig` 생성 (indent_style=space, indent_size=2, end_of_line=lf)
+- [ ] `.editorconfig` 생성
 
 ### 3-2. 모노레포 설정
 
 - [ ] 루트 `package.json` 생성 — npm workspaces 설정
-- [ ] `@opengroupware/sdk` 패키지 이름 설정 (groupware-sdk/package.json)
-- [ ] `@opengroupware/web` 패키지 이름 설정 (groupware-web/package.json)
-- [ ] 공통 devDependencies를 루트로 호이스팅
-- [ ] 루트 스크립트: `npm run lint`, `npm test`, `npm run build` 전 패키지 동작
+- [ ] `@opengroupware/sdk` 패키지 이름 설정 (groupware-sdk)
+- [ ] `@opengroupware/web` 패키지 이름 설정 (groupware-web)
+- [ ] 루트 스크립트: `npm run lint`, `npm test`, `npm run build` 전체 실행
 
 ### 3-3. 코드 품질 도구
 
+**Go 백엔드**:
+- [ ] `.golangci.yml` 생성 — golangci-lint 설정
+- [ ] `Makefile` 갱신 — lint, test, coverage 타겟 추가
+- [ ] Go 테스트 실행 환경 구축
+
+**Next.js 프론트엔드**:
 - [ ] ESLint flat config 설정 (`eslint.config.js`)
-- [ ] ESLint 규칙: no-unused-vars, consistent-return, prefer-const, no-var, eqeqeq, curly
-- [ ] Prettier 설정 (`.prettierrc`): semi:true, singleQuote:true, tabWidth:2, trailingComma:es5
+- [ ] Prettier 설정 (`.prettierrc`)
 - [ ] `.prettierignore` 생성
-- [ ] 전체 코드에 `npx prettier --write .` 적용
-- [ ] 전체 코드에 `npx eslint --fix .` 적용
+- [ ] 전체 코드에 `prettier --write` 적용
 - [ ] Husky 설치 및 `.husky/pre-commit` 설정
-- [ ] lint-staged 설정 (package.json 또는 `.lintstagedrc`)
-- [ ] commitlint 설정 (`commitlint.config.js`, conventional commits)
-- [ ] `.husky/commit-msg` 훅 추가
+- [ ] lint-staged 설정
+- [ ] commitlint 설정 (conventional commits)
 
-### 3-4. JSDoc 타입 시스템
+### 3-4. 테스트 인프라
 
-- [ ] `jsconfig.json` 생성 (checkJs: true, strict: true)
-- [ ] `groupware-sdk/src/types/` 디렉토리 생성
-- [ ] `types/common.js` — 공통 타입 (@typedef: ID, Timestamp, Pagination, SortOrder)
-- [ ] `types/errors.js` — 에러 코드 상수 및 GroupwareError 클래스
-- [ ] `types/events.js` — 이벤트 타입 정의
-- [ ] 기존 모든 함수에 JSDoc `@param`, `@returns`, `@throws` 추가
-- [ ] 기존 모든 클래스에 JSDoc `@class`, `@implements` 추가
-- [ ] 타입 체크 스크립트: `"typecheck": "tsc --noEmit --allowJs --checkJs"`
+**Go 백엔드**:
+- [ ] `internal/auth/service_test.go` 작성
+- [ ] `internal/approval/service_test.go` 작성
+- [ ] 테스트 커버리지 80% 목표
 
-### 3-5. 테스트 인프라
+**TypeScript 프론트엔드**:
+- [ ] Vitest 설치 및 설정
+- [ ] API 클라이언트 테스트 작성
+- [ ] 컴포넌트 테스트 작성 (React Testing Library)
 
-- [ ] Vitest 설치 및 `vitest.config.js` 설정
-- [ ] 테스트 헬퍼: `__tests__/helpers/` — mock factory, test fixtures
-- [ ] 테스트 유틸: `createMockRepository()`, `createMockEventBus()`
-- [ ] 커버리지 설정 (v8 provider, 최소 80% threshold)
-- [ ] `npm test`, `npm run test:coverage`, `npm run test:watch` 스크립트
+### 3-5. CI/CD
 
-### 3-6. CI/CD
-
-- [ ] `.github/workflows/ci.yml` — PR마다: install → lint → typecheck → test → coverage
-- [ ] `.github/workflows/release.yml` — main push 시: version bump → npm publish → GitHub Release
-- [ ] README에 배지 추가: CI, coverage, npm version, license
+- [ ] `.github/workflows/backend.yml` — Go lint, test, build
+- [ ] `.github/workflows/frontend.yml` — Next.js lint, type-check, test, build
+- [ ] README 배지 추가: CI, license
 
 ---
 
-## 4. Phase 2 — Core 인프라 (디자인 패턴 기반)
+## 4. Phase 2 — 백엔드 기능 강화
 
-> 모든 도메인 모듈이 의존하는 핵심. 인터페이스 → 구현 → 테스트 순서.
+### 4-1. 데이터 영속성
 
-### 4-1. EventBus (Observer + Singleton)
+- [ ] PostgreSQL 연동 — `database/sql` + `sqlx` 또는 GORM
+- [ ] 마이그레이션 시스템 — `golang-migrate/migrate`
+- [ ] 환경 변수 관리 — `.env` 파일 + Viper
+- [ ] Repository 패턴 구현 — `internal/repository/`
 
-- [ ] `core/interfaces/IEventBus.js` — @interface (on, off, once, emit)
-- [ ] `core/EventBus.js` — 구현 (wildcard, 에러 격리)
-- [ ] `core/__tests__/EventBus.test.js` — 최소 10개 테스트
-- [ ] 이벤트 타입 상수 (`core/events.js`)
+### 4-2. 파일 스토리지 구현
 
-### 4-2. DI Container (Factory + Singleton)
-
-- [ ] `core/interfaces/IContainer.js` — @interface (register, resolve, has, reset)
-- [ ] `core/Container.js` — 구현 (lazy resolution, scope, 순환 의존 감지)
-- [ ] `core/__tests__/Container.test.js`
-
-### 4-3. Repository 베이스 (Repository + Strategy + Builder)
-
-- [ ] `core/interfaces/IRepository.js` — @interface (findById, findAll, save, delete, count, exists)
-- [ ] `core/repositories/MemoryRepository.js` — 인메모리 구현
-- [ ] `core/repositories/MemoryRepository.test.js` — CRUD 전체 테스트
-- [ ] `core/interfaces/IQueryBuilder.js` — @interface (where, orderBy, limit, offset, execute)
-- [ ] `core/repositories/QueryBuilder.js` — Builder 패턴 구현
-- [ ] `core/repositories/QueryBuilder.test.js`
-
-### 4-4. Middleware Pipeline (Pipeline + Chain of Responsibility)
-
-- [ ] `core/interfaces/IPipeline.js` — @interface (use, execute)
-- [ ] `core/Pipeline.js` — 구현 (async, 에러 핸들링)
-- [ ] `core/__tests__/Pipeline.test.js`
-- [ ] `core/middlewares/LoggingMiddleware.js` + test
-- [ ] `core/middlewares/ValidationMiddleware.js` + test
-- [ ] `core/middlewares/RetryMiddleware.js` + test
-
-### 4-5. 에러 체계
-
-- [ ] `core/errors/ErrorCodes.js` — 상수 (NOT_FOUND, UNAUTHORIZED, VALIDATION, CONFLICT, INTERNAL, TIMEOUT, RATE_LIMITED)
-- [ ] `core/errors/GroupwareError.js` — 커스텀 에러
-- [ ] `core/errors/ErrorFactory.js` — Factory 패턴
-- [ ] `core/errors/__tests__/errors.test.js`
-
-### 4-6. Config Manager (Strategy + Singleton)
-
-- [ ] `core/interfaces/IConfigProvider.js` — @interface (get, set, getAll, has, merge)
-- [ ] `core/config/ConfigManager.js` — 구현 (병합, validation)
-- [ ] `core/config/ConfigManager.test.js`
-
-### 4-7. Logger (Decorator + Strategy)
-
-- [ ] `core/interfaces/ILogger.js` — @interface (debug, info, warn, error)
-- [ ] `core/logger/Logger.js` — 구현 (레벨, 포맷 Strategy)
-- [ ] `core/logger/Logger.test.js`
-- [ ] 포맷터: `JsonFormatter`, `PrettyFormatter`
-
-### 4-8. Validator (Strategy)
-
-- [ ] `core/interfaces/IValidator.js` — @interface (validate, addRule, getErrors)
-- [ ] `core/validation/Validator.js` — 규칙 체인, 커스텀 규칙
-- [ ] `core/validation/rules.js` — required, minLength, maxLength, email, pattern, range
-- [ ] `core/validation/__tests__/Validator.test.js`
-
-### 4-9. Serializer (Strategy + Adapter)
-
-- [ ] `core/interfaces/ISerializer.js` — @interface (serialize, deserialize)
-- [ ] `core/serializers/JsonSerializer.js`
-- [ ] `core/serializers/ICalSerializer.js` — iCal Adapter
-- [ ] `core/serializers/VCardSerializer.js` — vCard Adapter
-- [ ] 각 serializer 테스트
-
-### 4-10. Cache (Proxy + Strategy)
-
-- [ ] `core/interfaces/ICache.js` — @interface (get, set, has, delete, clear)
-- [ ] `core/cache/MemoryCache.js` — TTL 기반
-- [ ] `core/cache/CacheProxy.js` — Repository 래핑 Proxy
-- [ ] 캐시 무효화 전략
-- [ ] 각 캐시 테스트
-
----
-
-## 5. Phase 3 — 도메인 모듈 구현
-
-> 각 모듈 구조: Go의 경우 `service.go` → `handler.go` → `__tests__/`, TypeScript의 경우 컴포넌트 + API 클라이언트
-
-### 현재 구현 상태
-
-**✓ 구현 완료**:
-- Auth (인증) — JWT 기반 인증, 회원가입, 로그인, 토큰 갱신
-- Approval (전자결재) — 기안, 상신, 승인, 반려, 회수, 이벤트 기록
-
-**✗ 미구현** (모델만 정의됨):
-- Calendar (캘린더)
-- Contact (연락처)
-- Task (태스크)
-- Message (메신저)
-- Storage (파일 저장소)
-- Notification (알림)
-
-### 5-1. Auth 모듈 (✓ 구현됨)
-
-**Go 백엔드**:
-- [x] `internal/model/types.go` — User, TokenPair 엔티티
-- [x] `internal/auth/service.go` — JWT 인증 서비스
-  - Register, Login, Verify, Refresh, Logout
-  - bcrypt 비밀번호 해싱
-  - 액세스 토큰 + 리프레시 토큰
-  - 토큰 블랙리스트 관리
-- [x] `internal/auth/handler.go` — HTTP 엔드포인트
-  - POST /auth/register
-  - POST /auth/login
-  - POST /auth/refresh
-  - POST /auth/logout
-- [x] `internal/middleware/auth.go` — JWT 인증 미들웨어
-- [ ] `internal/auth/service_test.go` — 단위 테스트 (미작성)
-
-**TypeScript 프론트엔드**:
-- [x] `src/lib/api.ts` — authApi (login, register, refresh, logout)
-- [x] `src/stores/index.ts` — useAuthStore (Zustand 상태 관리)
-
-### 5-2. Approval 모듈 (✓ 구현됨)
-
-**Go 백엔드**:
-- [x] `internal/model/types.go` — ApprovalDoc, ApprovalStep, ApprovalEvent 엔티티
-- [x] `internal/approval/service.go` — 전자결재 서비스
-  - Create, Submit, Approve, Reject, Withdraw
-  - Get, History, ListPending, ListByAuthor
-  - 이벤트 기록 (Event Sourcing)
-  - 콜백 함수 (Observer 패턴)
-- [x] `internal/approval/handler.go` — HTTP 엔드포인트
-  - POST /approvals (생성)
-  - GET /approvals (목록)
-  - GET /approvals/pending (대기 목록)
-  - GET /approvals/:id (조회)
-  - GET /approvals/:id/history (이력)
-  - POST /approvals/:id/submit (상신)
-  - POST /approvals/:id/approve (승인)
-  - POST /approvals/:id/reject (반려)
-  - POST /approvals/:id/withdraw (회수)
-- [ ] `internal/approval/service_test.go` — 단위 테스트 (미작성)
-
-**TypeScript 프론트엔드**:
-- [x] `src/lib/api.ts` — approvalApi (전체 CRUD + 상태 변경)
-- [x] `src/app/approval/page.tsx` — 결재 목록 페이지
-- [x] `src/components/approval/CreateApprovalModal.tsx` — 기안 모달
-- [x] `src/components/approval/ApprovalDetailModal.tsx` — 상세 + 승인/반려 모달
-
-### 5-3. Calendar 모듈 (✗ 미구현)
-
-**모델만 정의됨**:
-- [x] `internal/model/types.go` — CalEvent, Attendee 엔티티
-- [ ] 서비스, 핸들러, 프론트엔드 UI 미구현
-
-**향후 구현 계획**:
-- [ ] `internal/calendar/service.go` — 일정 CRUD, 반복 일정, 충돌 감지
-- [ ] `internal/calendar/handler.go` — HTTP 엔드포인트
-- [ ] `src/app/calendar/page.tsx` — 캘린더 UI
-
-### 5-4. Message 모듈 (✗ 미구현)
-
-**모델만 정의됨**:
-- [x] `internal/model/types.go` — Channel, Message 엔티티
-- [ ] 서비스, 핸들러, 프론트엔드 UI 미구현
-
-**향후 구현 계획**:
-- [ ] `internal/message/service.go` — 채널, 메시지 CRUD, 스레드
-- [ ] `internal/message/handler.go` — HTTP 엔드포인트 + WebSocket
-- [ ] `src/app/messenger/page.tsx` — 메신저 UI
-
-### 5-5. Storage 모듈 (✗ 부분 구현)
-
-**프론트엔드 UI만 구현됨**:
-- [x] `src/app/files/page.tsx` — 파일 관리 페이지 (업로드/다운로드 UI)
-- [x] `src/lib/api.ts` — fileApi (list, get, upload, delete)
-- [x] `internal/model/types.go` — FileMetadata 엔티티
-- [ ] 백엔드 파일 서비스/핸들러 미구현
-
-**향후 구현 계획**:
-- [ ] `internal/storage/service.go` — 파일 업로드, 다운로드, 버전 관리
+- [ ] `internal/storage/service.go` — 파일 업로드, 다운로드, 삭제
 - [ ] `internal/storage/handler.go` — HTTP 엔드포인트
-- [ ] 파일 저장소 (로컬 FS, S3 등) 연동
+- [ ] 로컬 파일 시스템 저장
+- [ ] (선택) S3 호환 스토리지 연동
 
-### 5-6. Notice 모듈 (✗ 미구현)
+### 4-3. 공지사항 (Notice) 구현
 
-**모델만 정의됨**:
-- [x] `internal/model/types.go` — Post, Comment 엔티티
-- [ ] 서비스, 핸들러, 프론트엔드 UI 미구현
-
-**향후 구현 계획**:
 - [ ] `internal/notice/service.go` — 게시판 CRUD, 댓글
 - [ ] `internal/notice/handler.go` — HTTP 엔드포인트
-- [ ] `src/app/notice/page.tsx` — 공지사항 UI
+- [ ] 테스트 작성
 
-### 5-7. Notification 모듈 (✓ 부분 구현)
+### 4-4. 메신저 (Message) 구현
 
-**실시간 알림 (SSE)만 구현됨**:
-- [x] `src/hooks/useSSE.ts` — SSE 연결 훅
-- [x] `src/components/realtime/SSEProvider.tsx` — SSE Provider
-- [x] `src/stores/index.ts` — useNotificationStore
-- [x] `internal/model/types.go` — SSEEvent 엔티티
-- [ ] 백엔드 알림 서비스 미구현
+- [ ] `internal/message/service.go` — 채널, 메시지 CRUD
+- [ ] `internal/message/handler.go` — HTTP 엔드포인트 + WebSocket
+- [ ] 실시간 메시지 전달
+- [ ] 테스트 작성
 
-**향후 구현 계획**:
-- [ ] `internal/notification/service.go` — 알림 생성, 조회, 읽음 처리
-- [ ] `internal/notification/handler.go` — HTTP 엔드포인트
-- [ ] 이메일, 푸시 알림 채널 추가
+### 4-5. 캘린더 (Calendar) 구현
+
+- [ ] `internal/calendar/service.go` — 일정 CRUD, 반복 일정
+- [ ] `internal/calendar/handler.go` — HTTP 엔드포인트
+- [ ] iCal 포맷 지원
+- [ ] 테스트 작성
+
+### 4-6. 알림 (Notification) 구현
+
+- [ ] `internal/notification/service.go` — 알림 생성, 조회
+- [ ] `internal/notification/handler.go` — HTTP + SSE 엔드포인트
+- [ ] 알림 타입별 라우팅 (결재, 메시지, 일정 등)
 
 ---
 
-## 6. Phase 4 — SDK Facade & 통합
+## 5. Phase 3 — 프론트엔드 기능 강화
 
-- [ ] `sdk/OpenGroupware.js` — Facade (모든 모듈 통합)
-- [ ] `sdk/OpenGroupware.test.js` — 통합 테스트
-- [ ] `sdk/plugins/logger.plugin.js`
-- [ ] `sdk/plugins/cache.plugin.js`
-- [ ] `sdk/plugins/retry.plugin.js`
-- [ ] `sdk/index.js` — 최종 export
-- [ ] `__tests__/integration/sdk.integration.test.js`
-- [ ] `__tests__/integration/cross-module.test.js`
-- [ ] `__tests__/integration/plugin.integration.test.js`
-- [ ] 커버리지 80% 이상 확인
-- [ ] `infrastructure/rest/RestClient.js` + test
-- [ ] `infrastructure/rest/RestRepository.js` + test
-- [ ] `infrastructure/indexeddb/IndexedDBRepository.js` + test
+### 5-1. 파일 관리 페이지 완성
+
+- [ ] 파일 업로드 기능 (드래그 앤 드롭)
+- [ ] 파일 다운로드
+- [ ] 파일 삭제
+- [ ] 파일 미리보기 (이미지, PDF)
+
+### 5-2. 공지사항 페이지
+
+- [ ] `src/app/notice/page.tsx` — 게시판 목록
+- [ ] 공지사항 작성 모달
+- [ ] 공지사항 상세 + 댓글
+
+### 5-3. 메신저 페이지
+
+- [ ] `src/app/messenger/page.tsx` — 채널 목록 + 메시지
+- [ ] WebSocket 연결
+- [ ] 실시간 메시지 수신
+- [ ] 파일 전송
+
+### 5-4. 캘린더 페이지
+
+- [ ] `src/app/calendar/page.tsx` — 월간/주간/일간 뷰
+- [ ] 일정 생성 모달
+- [ ] 일정 드래그 앤 드롭
+- [ ] 일정 공유
+
+### 5-5. 알림 센터
+
+- [ ] 헤더에 알림 아이콘 + 드롭다운
+- [ ] 알림 읽음 처리
+- [ ] 알림 클릭 시 해당 페이지 이동
+
+---
+
+## 6. Phase 4 — 고도화
+
+### 6-1. 권한 관리 (RBAC)
+
+- [ ] 역할 정의 (Admin, Manager, Member, Guest)
+- [ ] 권한 체크 미들웨어
+- [ ] 프론트엔드 권한별 UI 표시
+
+### 6-2. 검색 기능
+
+- [ ] 전체 검색 (파일, 공지사항, 결재, 일정)
+- [ ] 검색 API 엔드포인트
+- [ ] 검색 페이지
+
+### 6-3. 다국어 지원
+
+- [ ] i18n 설정 (next-intl)
+- [ ] 한국어, 영어 지원
+
+### 6-4. 모바일 반응형
+
+- [ ] 모바일 레이아웃
+- [ ] 터치 제스처
+
+### 6-5. 성능 최적화
+
+- [ ] API 응답 캐싱 (Redis)
+- [ ] 이미지 최적화
+- [ ] 코드 스플리팅
 
 ---
 
 ## 7. Phase 5 — 문서화 & 배포
 
-- [ ] JSDoc → HTML 생성 설정 + `npm run docs`
-- [ ] `docs/architecture.md` — 계층, 패턴 맵, 데이터 흐름
-- [ ] `docs/migration-guide.md` — 타 언어 포팅 참고
-- [ ] `docs/plugin-guide.md` — 커스텀 플러그인 작성법
-- [ ] `docs/storage-adapters.md` — 커스텀 어댑터 작성법
-- [ ] `examples/basic-usage.js`
-- [ ] `examples/custom-storage.js`
-- [ ] `examples/plugin-system.js`
-- [ ] `examples/cross-module.js`
-- [ ] `examples/query-builder.js`
-- [ ] 패키지 배포 설정 (main, module, exports, types, files)
-- [ ] 시맨틱 버저닝 0.1.0
-- [ ] GitHub Topics, description 설정
-- [ ] README 배지 최종 정리
+### 7-1. 문서화
+
+- [ ] `docs/architecture.md` — 아키텍처 다이어그램
+- [ ] `docs/api.md` — REST API 문서
+- [ ] `docs/deployment.md` — 배포 가이드
+- [ ] Swagger/OpenAPI 스펙 생성
+
+### 7-2. 배포
+
+- [ ] Docker 이미지 생성 (백엔드 + 프론트엔드)
+- [ ] Docker Compose 설정 (로컬 개발 환경)
+- [ ] 프로덕션 배포 가이드 (AWS, GCP, Azure)
+
+### 7-3. 데모
+
+- [ ] 라이브 데모 사이트 구축
+- [ ] 샘플 데이터 스크립트
 
 ---
 
-## 8. Phase 6 — 고도화
+## 8. Claude Code 규칙
 
-- [ ] TypeScript 마이그레이션 (.js → .ts, strict mode)
-- [ ] 다국어 지원 (i18n)
-- [ ] WebSocket Transport 구현
-- [ ] 오프라인 지원 (IndexedDB + 동기화)
-- [ ] GraphQL Adapter
-- [ ] React 바인딩 (`@opengroupware/react`)
-- [ ] Vue 바인딩 (`@opengroupware/vue`)
-- [ ] 벤치마크 테스트
-- [ ] E2E 테스트
-- [ ] 보안 감사
+1. **spec.md를 먼저 읽는다**
+2. **STATUS.md로 현재 상태 파악**
+3. **가장 낮은 미완료 Phase의 첫 번째 [ ] 항목부터 처리**
+4. **한 라운드에 관련 항목은 묶어서 최대한 많이 처리**
+5. **변경마다 git commit (conventional commits)**
+6. **완료 항목은 `[x]`로 체크**
+7. **테스트 실행 및 통과 확인**
+8. **CHANGELOG.md 갱신**
+9. **Go 코드**: 주석 작성, 에러 처리, 테스트 작성
+10. **TypeScript 코드**: 타입 안정성, 주석 작성, 테스트 작성
 
 ---
 
-## 9. Claude Code 규칙
+## 9. 현재 구현 상태 (STATUS.md 참조)
 
-1. spec.md를 먼저 읽는다
-2. STATUS.md로 현재 상태 파악
-3. 가장 낮은 미완료 Phase의 첫 번째 [ ] 항목부터 처리
-4. 한 라운드에 관련 항목은 묶어서 최대한 많이 처리
-5. 변경마다 git commit (conventional commits)
-6. 완료 항목은 `[x]`로 체크
-7. 테스트 실행 및 통과 확인
-8. 디자인 패턴을 커밋 메시지에 명시
-9. 3단계 이상 중첩/상속 금지
-10. 인터페이스 먼저 정의 후 구현
-11. 모든 public API에 JSDoc
-12. CHANGELOG.md 갱신
+### ✓ 완료
+
+- 인증 (JWT) — 회원가입, 로그인, 토큰 갱신, 로그아웃
+- 전자결재 — 기안, 상신, 승인, 반려, 회수, 이벤트 기록
+- 실시간 알림 (SSE) — 프론트엔드만
+- 대시보드 — 동기화 상태 UI
+- 파일 관리 — UI만 (백엔드 미완)
+
+### ✗ 미완료
+
+- 파일 스토리지 백엔드 API
+- 공지사항 (모델만 정의)
+- 메신저 (모델만 정의)
+- 캘린더 (모델만 정의)
+- 알림 백엔드 서비스
+- 데이터베이스 연동 (현재 in-memory)
+- 테스트 (0개)
+
+---
+
+## 10. 모듈 개요
+
+### 10-1. 백엔드 (Go)
+
+**엔트리 포인트**: `groupware-sdk/cmd/server/main.go`
+
+**핵심 모듈**:
+- `config/` — Viper 기반 설정 관리
+- `pkg/logger/` — zap 구조화 로깅
+- `pkg/response/` — API 응답 헬퍼
+- `internal/middleware/` — 인증, CORS, 로깅 미들웨어
+- `internal/model/` — 도메인 엔티티
+- `internal/auth/` — JWT 인증 서비스
+- `internal/approval/` — 전자결재 서비스
+
+**향후 추가 예정**:
+- `internal/storage/` — 파일 스토리지
+- `internal/notice/` — 공지사항
+- `internal/message/` — 메신저
+- `internal/calendar/` — 캘린더
+- `internal/notification/` — 알림
+- `internal/repository/` — 데이터베이스 레이어
+
+### 10-2. 프론트엔드 (Next.js)
+
+**엔트리 포인트**: `groupware-web/src/app/layout.tsx`
+
+**핵심 모듈**:
+- `src/types/` — TypeScript 타입 정의
+- `src/lib/api.ts` — API 클라이언트
+- `src/lib/utils.ts` — 유틸리티 함수
+- `src/stores/` — Zustand 전역 상태
+- `src/hooks/` — React Custom Hooks
+- `src/components/layout/` — 레이아웃 (Header, Sidebar, Providers)
+- `src/components/realtime/` — SSE Provider
+- `src/components/approval/` — 전자결재 컴포넌트
+- `src/app/` — Next.js App Router 페이지
+
+**라이브러리**:
+- TanStack Query (React Query) — 데이터 페칭 + 캐싱
+- Zustand — 전역 상태 관리
+- Zod — 스키마 검증
+- React Hook Form — 폼 관리
+- Sonner — 토스트 알림
+- Radix UI — Headless UI 컴포넌트
+- Tailwind CSS v4 — 스타일링
+
+---
+
+## 11. 참고 문서
+
+- STATUS.md — Phase 0 분석 결과
+- CHANGELOG.md — 변경 이력
+- CONTRIBUTING.md — 기여 가이드
+- docs/ — 상세 문서
