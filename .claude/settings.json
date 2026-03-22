@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(**/ralph-wiggum/**)",
+      "Bash(**/ralph/**)",
+      "Bash(npm *)",
+      "Bash(npx *)",
+      "Bash(git *)",
+      "Bash(mkdir*)",
+      "Bash(cp*)",
+      "Bash(mv*)",
+      "Bash(rm*)",
+      "Bash(cat*)",
+      "Bash(find*)",
+      "Bash(grep*)",
+      "Bash(ls*)",
+      "Bash(tree*)",
+      "Bash(echo*)",
+      "Bash(node*)",
+      "Bash(tsc*)",
+      "Read",
+      "Write",
+      "Edit"
+    ]
+  }
+}
