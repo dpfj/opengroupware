@@ -29,6 +29,13 @@ dist/
 build/
 .next/
 out/
+groupware-sdk/cmd/server/server
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
 
 # Environment
 .env
@@ -43,3 +50,28 @@ coverage/
 tmp/
 temp/
 *.tmp
+
+# Go specific
+go.work
+go.work.sum
+*.out
+
+# Next.js specific
+.vercel
+.turbo
+.eslintcache
+
+# Testing
+.nyc_output
+
+# TypeScript
+*.tsbuildinfo
+
+# Editor backups
+*~.nib
+*.rej
+*.orig
+
+# Archive files
+*.tar.gz
+*.zip

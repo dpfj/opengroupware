@@ -366,7 +366,8 @@
 
 ## 11. 참고 문서
 
-- STATUS.md — Phase 0 분석 결과
-- CHANGELOG.md — 변경 이력
-- CONTRIBUTING.md — 기여 가이드
+- [STATUS.md](./STATUS.md) — Phase 0 분석 결과
+- [CHANGELOG.md](./CHANGELOG.md) — 변경 이력
+- [CONTRIBUTING.md](./CONTRIBUTING.md) — 기여 가이드
+- [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) — 행동 강령
 - docs/ — 상세 문서
