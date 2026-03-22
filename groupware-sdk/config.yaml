@@ -1,0 +1,28 @@
+server:
+  port: "8080"
+  mode: "debug"
+  timeout: 30s
+
+db:
+  hosts:
+    - "localhost:9042"
+  keyspace: "groupware"
+  consistency: "local_quorum"
+  timeout: 5s
+
+cache:
+  addr: "localhost:6379"
+  ttl: 24h
+
+auth:
+  jwt_secret: "groupware-secret-change-in-production"
+  access_token_ttl: 1h
+  refresh_token_ttl: 168h
+
+storage:
+  type: local
+  base_dir: "./data/files"
+
+log:
+  level: info
+  format: console

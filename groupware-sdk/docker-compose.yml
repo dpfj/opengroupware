@@ -1,0 +1,87 @@
+services:
+
+  dragonfly:
+    image: docker.dragonflydb.io/dragonflydb/dragonfly:latest
+    container_name: gw-dragonfly
+    ports:
+      - "6379:6379"
+    ulimits:
+      memlock: -1
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - groupware
+
+  scylla:
+    image: scylladb/scylla:5.4
+    container_name: gw-scylla
+    ports:
+      - "9042:9042"
+    command: --smp 1 --memory 512M --overprovisioned 1 --developer-mode 1
+    healthcheck:
+      test: ["CMD", "cqlsh", "-e", "describe keyspaces"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - groupware
+
+  backend:
+    image: golang:1.22-alpine
+    container_name: gw-backend
+    working_dir: /app
+    ports:
+      - "8080:8080"
+    environment:
+      - SERVER_PORT=8080
+      - SERVER_MODE=debug
+      - CACHE_ADDR=dragonfly:6379
+      - DB_HOSTS=scylla:9042
+      - LOG_FORMAT=console
+    volumes:
+      - ./:/app
+      - go-cache:/root/go/pkg/mod
+    command: >
+      sh -c "
+        go install github.com/air-verse/air@v1.52.3 &&
+        air -c .air.toml
+      "
+    depends_on:
+      dragonfly:
+        condition: service_healthy
+      scylla:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - groupware
+
+  frontend:
+    image: node:22-alpine
+    container_name: gw-frontend
+    working_dir: /app
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
+      - WATCHPACK_POLLING=true
+    volumes:
+      - ../groupware-web:/app
+      - node-modules:/app/node_modules
+    command: sh -c "npm install && npm run dev"
+    restart: unless-stopped
+    networks:
+      - groupware
+
+volumes:
+  go-cache:
+  node-modules:
+
+networks:
+  groupware:
+    name: groupware-network

@@ -1,0 +1,25 @@
+# Air - Go Hot Reload 설정
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  cmd = "go build -o ./tmp/server ./cmd/server/main.go"
+  bin = "./tmp/server"
+  full_bin = "./tmp/server"
+  include_ext = ["go"]
+  exclude_dir = ["tmp", "vendor", "test_logs"]
+  delay = 500
+  kill_delay = "500ms"
+  rerun_delay = 500
+
+[log]
+  time = true
+
+[color]
+  main = "magenta"
+  watcher = "cyan"
+  build = "yellow"
+  runner = "green"
+
+[misc]
+  clean_on_exit = true

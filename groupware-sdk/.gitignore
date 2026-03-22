@@ -1,0 +1,17 @@
+# 바이너리
+/server
+/groupware-sdk
+
+# 환경변수
+.env
+*.env.local
+
+# 데이터
+/data/
+/test_logs/*.log
+!/test_logs/*.FAILED.log
+!/test_logs/SUMMARY.md
+!/test_logs/.gitkeep
+
+# Go
+vendor/
