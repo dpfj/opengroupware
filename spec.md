@@ -11,9 +11,9 @@
 |------|-----|
 | 저장소 | https://github.com/dpfj/opengroupware |
 | 구조 | 모노레포 (`groupware-sdk` + `groupware-web`) |
-| 언어 | JavaScript 99.3% |
+| 언어 | Go (백엔드) + TypeScript (프론트엔드) |
 | 라이선스 | MIT |
-| 목표 | 퍼블릭 오픈소스 그룹웨어 SDK 라이브러리 |
+| 목표 | 퍼블릭 오픈소스 그룹웨어 풀스택 애플리케이션 |
 
 ---
 
@@ -233,96 +233,129 @@
 
 ## 5. Phase 3 — 도메인 모듈 구현
 
-> 각 모듈 구조: `interfaces.js` → `entities.js` → `service.js` → `repository.js` → `factory.js` → `index.js` → `__tests__/`
+> 각 모듈 구조: Go의 경우 `service.go` → `handler.go` → `__tests__/`, TypeScript의 경우 컴포넌트 + API 클라이언트
 
-### 5-1. Calendar 모듈
+### 현재 구현 상태
 
-- [ ] `modules/calendar/interfaces.js` — ICalendarService, ICalendarRepository
-- [ ] `modules/calendar/entities.js` — CalendarEvent, Recurrence, Reminder, Calendar
-- [ ] `modules/calendar/calendar.repository.js`
-- [ ] `modules/calendar/calendar.service.js` — 충돌 감지, 반복 일정 확장
-- [ ] `modules/calendar/strategies/RecurrenceStrategy.js` — Daily, Weekly, Monthly, Yearly
-- [ ] `modules/calendar/calendar.factory.js`
-- [ ] `modules/calendar/index.js`
-- [ ] `modules/calendar/__tests__/calendar.service.test.js` — 최소 15개
-- [ ] `modules/calendar/__tests__/calendar.repository.test.js`
-- [ ] `modules/calendar/__tests__/RecurrenceStrategy.test.js`
-- [ ] iCal 직렬화 연동
+**✓ 구현 완료**:
+- Auth (인증) — JWT 기반 인증, 회원가입, 로그인, 토큰 갱신
+- Approval (전자결재) — 기안, 상신, 승인, 반려, 회수, 이벤트 기록
 
-### 5-2. Contact 모듈
+**✗ 미구현** (모델만 정의됨):
+- Calendar (캘린더)
+- Contact (연락처)
+- Task (태스크)
+- Message (메신저)
+- Storage (파일 저장소)
+- Notification (알림)
 
-- [ ] `modules/contact/interfaces.js`
-- [ ] `modules/contact/entities.js` — Contact, ContactGroup, Address, Phone, Email
-- [ ] `modules/contact/contact.repository.js`
-- [ ] `modules/contact/contact.service.js` — 검색, 그룹, 중복 감지
-- [ ] `modules/contact/strategies/SearchStrategy.js` — ExactMatch, FuzzySearch, FullText
-- [ ] `modules/contact/contact.factory.js`
-- [ ] `modules/contact/index.js`
-- [ ] `modules/contact/__tests__/contact.service.test.js` — 최소 15개
-- [ ] `modules/contact/__tests__/SearchStrategy.test.js`
-- [ ] vCard 직렬화 연동
+### 5-1. Auth 모듈 (✓ 구현됨)
 
-### 5-3. Task 모듈
+**Go 백엔드**:
+- [x] `internal/model/types.go` — User, TokenPair 엔티티
+- [x] `internal/auth/service.go` — JWT 인증 서비스
+  - Register, Login, Verify, Refresh, Logout
+  - bcrypt 비밀번호 해싱
+  - 액세스 토큰 + 리프레시 토큰
+  - 토큰 블랙리스트 관리
+- [x] `internal/auth/handler.go` — HTTP 엔드포인트
+  - POST /auth/register
+  - POST /auth/login
+  - POST /auth/refresh
+  - POST /auth/logout
+- [x] `internal/middleware/auth.go` — JWT 인증 미들웨어
+- [ ] `internal/auth/service_test.go` — 단위 테스트 (미작성)
 
-- [ ] `modules/task/interfaces.js`
-- [ ] `modules/task/entities.js` — Task, Priority, Assignment, TaskStatus
-- [ ] `modules/task/task.repository.js`
-- [ ] `modules/task/task.service.js` — 할당, 마감일, 우선순위
-- [ ] `modules/task/TaskStateMachine.js` — State 패턴
-- [ ] `modules/task/commands/AssignTaskCommand.js` — Command 패턴
-- [ ] `modules/task/commands/CompleteTaskCommand.js`
-- [ ] `modules/task/task.factory.js`
-- [ ] `modules/task/index.js`
-- [ ] `modules/task/__tests__/task.service.test.js` — 최소 15개
-- [ ] `modules/task/__tests__/TaskStateMachine.test.js`
-- [ ] `modules/task/__tests__/commands.test.js`
+**TypeScript 프론트엔드**:
+- [x] `src/lib/api.ts` — authApi (login, register, refresh, logout)
+- [x] `src/stores/index.ts` — useAuthStore (Zustand 상태 관리)
 
-### 5-4. Message 모듈
+### 5-2. Approval 모듈 (✓ 구현됨)
 
-- [ ] `modules/message/interfaces.js`
-- [ ] `modules/message/entities.js` — Channel, Message, Thread, Reaction
-- [ ] `modules/message/message.repository.js`
-- [ ] `modules/message/message.service.js` — 채널, 스레드, 읽음
-- [ ] `modules/message/transports/InMemoryTransport.js`
-- [ ] `modules/message/transports/WebSocketTransport.js` — 인터페이스
-- [ ] `modules/message/message.factory.js`
-- [ ] `modules/message/index.js`
-- [ ] `modules/message/__tests__/message.service.test.js` — 최소 15개
+**Go 백엔드**:
+- [x] `internal/model/types.go` — ApprovalDoc, ApprovalStep, ApprovalEvent 엔티티
+- [x] `internal/approval/service.go` — 전자결재 서비스
+  - Create, Submit, Approve, Reject, Withdraw
+  - Get, History, ListPending, ListByAuthor
+  - 이벤트 기록 (Event Sourcing)
+  - 콜백 함수 (Observer 패턴)
+- [x] `internal/approval/handler.go` — HTTP 엔드포인트
+  - POST /approvals (생성)
+  - GET /approvals (목록)
+  - GET /approvals/pending (대기 목록)
+  - GET /approvals/:id (조회)
+  - GET /approvals/:id/history (이력)
+  - POST /approvals/:id/submit (상신)
+  - POST /approvals/:id/approve (승인)
+  - POST /approvals/:id/reject (반려)
+  - POST /approvals/:id/withdraw (회수)
+- [ ] `internal/approval/service_test.go` — 단위 테스트 (미작성)
 
-### 5-5. Storage 모듈
+**TypeScript 프론트엔드**:
+- [x] `src/lib/api.ts` — approvalApi (전체 CRUD + 상태 변경)
+- [x] `src/app/approval/page.tsx` — 결재 목록 페이지
+- [x] `src/components/approval/CreateApprovalModal.tsx` — 기안 모달
+- [x] `src/components/approval/ApprovalDetailModal.tsx` — 상세 + 승인/반려 모달
 
-- [ ] `modules/storage/interfaces.js`
-- [ ] `modules/storage/entities.js` — FileEntry, Folder, FileVersion
-- [ ] `modules/storage/storage.service.js` — 업로드, 다운로드, 버전
-- [ ] `modules/storage/adapters/MemoryStorageAdapter.js`
-- [ ] `modules/storage/adapters/LocalFSAdapter.js`
-- [ ] `modules/storage/commands/UploadCommand.js`
-- [ ] `modules/storage/commands/DeleteCommand.js`
-- [ ] `modules/storage/storage.factory.js`
-- [ ] `modules/storage/index.js`
-- [ ] `modules/storage/__tests__/storage.service.test.js` — 최소 15개
+### 5-3. Calendar 모듈 (✗ 미구현)
 
-### 5-6. Notification 모듈
+**모델만 정의됨**:
+- [x] `internal/model/types.go` — CalEvent, Attendee 엔티티
+- [ ] 서비스, 핸들러, 프론트엔드 UI 미구현
 
-- [ ] `modules/notification/interfaces.js`
-- [ ] `modules/notification/entities.js`
-- [ ] `modules/notification/notification.service.js`
-- [ ] `modules/notification/channels/InAppChannel.js`
-- [ ] `modules/notification/channels/EmailChannel.js` — 인터페이스
-- [ ] `modules/notification/notification.factory.js`
-- [ ] `modules/notification/index.js`
-- [ ] `modules/notification/__tests__/notification.service.test.js`
+**향후 구현 계획**:
+- [ ] `internal/calendar/service.go` — 일정 CRUD, 반복 일정, 충돌 감지
+- [ ] `internal/calendar/handler.go` — HTTP 엔드포인트
+- [ ] `src/app/calendar/page.tsx` — 캘린더 UI
 
-### 5-7. Auth 모듈
+### 5-4. Message 모듈 (✗ 미구현)
 
-- [ ] `modules/auth/interfaces.js`
-- [ ] `modules/auth/entities.js` — User, Session, Token, Permission
-- [ ] `modules/auth/auth.service.js`
-- [ ] `modules/auth/strategies/BasicAuthStrategy.js`
-- [ ] `modules/auth/strategies/TokenAuthStrategy.js`
-- [ ] `modules/auth/auth.factory.js`
-- [ ] `modules/auth/index.js`
-- [ ] `modules/auth/__tests__/auth.service.test.js`
+**모델만 정의됨**:
+- [x] `internal/model/types.go` — Channel, Message 엔티티
+- [ ] 서비스, 핸들러, 프론트엔드 UI 미구현
+
+**향후 구현 계획**:
+- [ ] `internal/message/service.go` — 채널, 메시지 CRUD, 스레드
+- [ ] `internal/message/handler.go` — HTTP 엔드포인트 + WebSocket
+- [ ] `src/app/messenger/page.tsx` — 메신저 UI
+
+### 5-5. Storage 모듈 (✗ 부분 구현)
+
+**프론트엔드 UI만 구현됨**:
+- [x] `src/app/files/page.tsx` — 파일 관리 페이지 (업로드/다운로드 UI)
+- [x] `src/lib/api.ts` — fileApi (list, get, upload, delete)
+- [x] `internal/model/types.go` — FileMetadata 엔티티
+- [ ] 백엔드 파일 서비스/핸들러 미구현
+
+**향후 구현 계획**:
+- [ ] `internal/storage/service.go` — 파일 업로드, 다운로드, 버전 관리
+- [ ] `internal/storage/handler.go` — HTTP 엔드포인트
+- [ ] 파일 저장소 (로컬 FS, S3 등) 연동
+
+### 5-6. Notice 모듈 (✗ 미구현)
+
+**모델만 정의됨**:
+- [x] `internal/model/types.go` — Post, Comment 엔티티
+- [ ] 서비스, 핸들러, 프론트엔드 UI 미구현
+
+**향후 구현 계획**:
+- [ ] `internal/notice/service.go` — 게시판 CRUD, 댓글
+- [ ] `internal/notice/handler.go` — HTTP 엔드포인트
+- [ ] `src/app/notice/page.tsx` — 공지사항 UI
+
+### 5-7. Notification 모듈 (✓ 부분 구현)
+
+**실시간 알림 (SSE)만 구현됨**:
+- [x] `src/hooks/useSSE.ts` — SSE 연결 훅
+- [x] `src/components/realtime/SSEProvider.tsx` — SSE Provider
+- [x] `src/stores/index.ts` — useNotificationStore
+- [x] `internal/model/types.go` — SSEEvent 엔티티
+- [ ] 백엔드 알림 서비스 미구현
+
+**향후 구현 계획**:
+- [ ] `internal/notification/service.go` — 알림 생성, 조회, 읽음 처리
+- [ ] `internal/notification/handler.go` — HTTP 엔드포인트
+- [ ] 이메일, 푸시 알림 채널 추가
 
 ---
 
